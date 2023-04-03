@@ -1,0 +1,1301 @@
+<!DOCTYPE HTML>
+<HTML lang="en">
+
+<Head>
+	<Title>"Game Engine"</TITLE>
+
+
+	<script id="2dVertexShader" type="notjs">
+		attribute vec4 a_position;
+		attribute vec3 a_color;
+		attribute vec3 a_texture;
+		attribute vec4 a_normal;
+		varying vec3 v_color;
+		varying vec3 v_texture;
+		varying vec4 v_normal;
+
+		uniform vec3 u_cameraTran;
+		uniform vec3 u_cameraRot;
+
+		uniform float u_viewAspect;
+		uniform float u_viewFOV;
+		uniform float u_viewNear;
+		uniform float u_viewFar;
+
+		uniform vec3 u_translation;
+		uniform vec3 u_rotation;
+		uniform vec3 u_scale;
+
+		vec4 MoveCamera(vec4 pos)
+		{
+			vec3 cos = cos(u_cameraRot);
+			vec3 sin = sin(u_cameraRot);
+
+			mat4 translateView = mat4(
+				1.0,0.0,0.0,0.0,
+				0.0,1.0,0.0,0.0,
+				0.0,0.0,-1.0,0.0,
+				-u_cameraTran.x,-u_cameraTran.y,u_cameraTran.z,1.0
+			);
+
+			mat4 rX = mat4( 
+				1.0,  0.0,  0.0,  0.0,
+				0.0,  cos.x,sin.x,0.0,
+				0.0, -sin.x,cos.x,0.0,
+				0.0,  0.0,  0.0,  1.0
+			);
+
+			mat4 rY = mat4( 
+				cos.y,0.0, -sin.y,0.0,
+				0.0,  1.0,  0.0,  0.0,
+				sin.y,0.0,  cos.y,0.0,
+				0.0,  0.0,  0.0,  1.0
+			);
+
+			mat4 rZ = mat4( 
+				cos.z,sin.z,0.0,  0.0,
+				-sin.z,cos.z,0.0,  0.0,
+				0.0,  0.0,  1.0,  0.0,
+				0.0,  0.0,  0.0,  1.0
+			);
+
+			return rX * rY * rZ * translateView * pos;
+		}
+
+		vec4 ApplyProjection(vec4 pos)
+		{
+			float yScale = 1.0 / tan(radians(u_viewFOV) / 2.0);
+			float xScale = yScale / u_viewAspect;
+			float Dif = u_viewFar-u_viewNear;
+			mat4 perspectiveMatrix = mat4(
+				xScale, 0.0,      0.0,                             0.0,
+				0.0,    yScale,   0.0,                             0.0,
+				0.0,    0.0,      -1.0*(u_viewFar+u_viewNear)/Dif, -1.0,
+				0.0,    0.0,      -2.0*u_viewFar*u_viewNear/Dif,   0.0
+			);
+
+			return perspectiveMatrix * pos;
+		}
+
+		vec4 ScaleObject(vec4 pos)
+		{
+			if(length(u_scale) != 0.0)
+			{
+				mat4 scaleM = mat4(
+					u_scale.x,0.0,0.0,0.0,
+					0.0,u_scale.y,0.0,0.0,
+					0.0,0.0,u_scale.z,0.0,
+					0.0,0.0,0.0,1.0
+				);
+				return scaleM*pos;
+			}
+			else
+			{
+				return pos;
+			}
+		}
+
+		vec4 RotateObject(vec4 pos)
+		{
+			vec3 cos = cos(u_rotation);
+			vec3 sin = sin(u_rotation);
+
+			mat4 rX = mat4( 
+				1.0,  0.0,  0.0,  0.0,
+				0.0,  cos.x,sin.x,0.0,
+				0.0, -sin.x,cos.x,0.0,
+				0.0,  0.0,  0.0,  1.0
+			);
+
+			mat4 rY = mat4( 
+				cos.y,0.0, -sin.y,0.0,
+				0.0,  1.0,  0.0,  0.0,
+				sin.y,0.0,  cos.y,0.0,
+				0.0,  0.0,  0.0,  1.0
+			);
+
+			mat4 rZ = mat4( 
+				cos.z,sin.z,0.0,  0.0,
+				-sin.z,cos.z,0.0,  0.0,
+				0.0,  0.0,  1.0,  0.0,
+				0.0,  0.0,  0.0,  1.0
+			);
+
+			return rX * rY * rZ * pos;
+		}
+
+		vec4 PositionObject(vec4 pos)
+		{
+			mat4 translateM = mat4(
+				1.0,0.0,0.0,0.0,
+				0.0,1.0,0.0,0.0,
+				0.0,0.0,1.0,0.0,
+				u_translation.x,u_translation.y,u_translation.z,1.0
+			);
+			return translateM*pos;
+		}
+
+		void main()
+		{
+			v_color = a_color;
+
+			vec4 worldPos = PositionObject(RotateObject(ScaleObject(a_position)));
+
+			vec4 cameraSpace = MoveCamera(worldPos);
+			
+			v_color = a_color;
+			v_texture = a_texture;
+			v_normal = normalize(RotateObject(ScaleObject(a_normal)));
+
+			gl_Position=ApplyProjection(cameraSpace);
+		}		
+	</SCRIPT>
+
+	<script id="2dFragmentShader" type="notjs">
+		//Fragment shaders do not have precision so we have to set it.
+		precision mediump float;
+		varying vec3 v_color;
+		varying vec3 v_texture;
+		varying vec4 v_normal;
+		uniform vec4 u_color;
+
+		void main()
+		{
+			float value = (dot(v_normal,normalize(vec4(0,1,-1,0))) + 1.0)/2.0;
+			float oneMinus = (1.0 - value);
+		 	gl_FragColor = mix(vec4(v_color,1),vec4(0.125,0,0.25,1),oneMinus * oneMinus) * u_color;
+		}
+	</script>
+
+	<script>
+        class Transform {
+	constructor() {
+		this.loc = [0, 0, 0];
+		this.rot = [0, 0, 0];
+		this.scale = [1, 1, 1];
+
+		this.forward = [0, 0, 1];
+		this.right = [1, 0, 0];
+		this.up = [0, 1, 0];
+	}
+
+	setLocation(loc) {
+		this.loc = [...loc];
+	}
+
+	setRotation(rot) {
+		this.rot = [...rot];
+		this.xRot = [
+			[1, 0, 0, 0],
+			[0, Math.cos(rot[0]), -1 * Math.sin(rot[0]), 0],
+			[0, Math.sin(rot[0]), Math.cos(rot[0]), 0],
+			[0, 0, 0, 1]
+		];
+		this.yRot = [
+			[Math.cos(rot[1]), 0, Math.sin(rot[1]), 0],
+			[0, 1, 0, 0],
+			[-1 * Math.sin(rot[1]), 0, Math.cos(rot[1]), 0],
+			[0, 0, 0, 1]
+		];
+		this.zRot = [
+			[Math.cos(rot[2]), -1 * Math.sin(rot[2]), 0, 0],
+			[Math.sin(rot[2]), Math.cos(rot[2]), 0, 0],
+			[0, 0, 1, 0],
+			[0, 0, 0, 1]
+		]
+		//this.forward = this.crossMultiply(xRot,[0,0,1,0]);		
+		this.forward = this.crossMultiply(this.zRot, this.crossMultiply(this.yRot, this.crossMultiply(this.xRot, [0, 0, 1, 0])))
+		this.right = this.crossMultiply(this.zRot, this.crossMultiply(this.yRot, this.crossMultiply(this.xRot, [1, 0, 0, 0])))
+		this.up = this.crossMultiply(this.zRot, this.crossMultiply(this.yRot, this.crossMultiply(this.xRot, [0, 1, 0, 0])))
+	}
+
+	crossMultiply(M, V) {
+		var temp = [
+			M[0][0] * V[0] + M[0][1] * V[1] + M[0][2] * V[2] + M[0][3] * V[3],
+			M[1][0] * V[0] + M[1][1] * V[1] + M[1][2] * V[2] + M[1][3] * V[3],
+			M[2][0] * V[0] + M[2][1] * V[1] + M[2][2] * V[2] + M[2][3] * V[3],
+			M[3][0] * V[0] + M[3][1] * V[1] + M[3][2] * V[2] + M[3][3] * V[3]
+		]
+		return temp;
+	}
+
+}
+
+class Pyramid {
+	constructor() {
+		this.buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		//Now we want to add color to our vertices information.
+		this.vertices =
+		[
+		-0.5375,
+		0.3899999999999999,
+		0,
+		1,
+		0,
+		0,
+		-0.03749999999999998,
+		0.3899999999999999,
+		0,
+		1,
+		0,
+		0,
+		-0.04710735979838476,
+		0.487545161008064,
+		0,
+		1,
+		0,
+		0,
+		-0.07556023374435661,
+		0.5813417161825448,
+		0,
+		1,
+		0,
+		0,
+		-0.12176519384872736,
+		0.667785116509801,
+		0,
+		1,
+		0,
+		0,
+		-0.1839466094067262,
+		0.7435533905932736,
+		0,
+		1,
+		0,
+		0,
+		-0.25971488349019883,
+		0.8057348061512726,
+		0,
+		1,
+		0,
+		0,
+		-0.34615828381745506,
+		0.8519397662556433,
+		0,
+		1,
+		0,
+		0,
+		-0.4399548389919358,
+		0.8803926402016151,
+		0,
+		1,
+		0,
+		0,
+		-0.5375,
+		0.8899999999999999,
+		0,
+		1,
+		0,
+		0,
+		-0.6350451610080641,
+		0.8803926402016151,
+		0,
+		1,
+		0,
+		0,
+		-0.7288417161825449,
+		0.8519397662556433,
+		0,
+		1,
+		0,
+		0,
+		-0.815285116509801,
+		0.8057348061512726,
+		0,
+		1,
+		0,
+		0,
+		-0.8910533905932737,
+		0.7435533905932736,
+		0,
+		1,
+		0,
+		0,
+		-0.9532348061512727,
+		0.667785116509801,
+		0,
+		1,
+		0,
+		0,
+		-0.9994397662556433,
+		0.5813417161825448,
+		0,
+		1,
+		0,
+		0,
+		-1.0278926402016153,
+		0.4875451610080642,
+		0,
+		1,
+		0,
+		0,
+		-1.0375,
+		0.38999999999999996,
+		0,
+		1,
+		0,
+		0,
+		-1.0278926402016153,
+		0.2924548389919357,
+		0,
+		1,
+		0,
+		0,
+		-0.9994397662556433,
+		0.19865828381745507,
+		0,
+		1,
+		0,
+		0,
+		-0.9532348061512728,
+		0.11221488349019892,
+		0,
+		1,
+		0,
+		0,
+		-0.8910533905932738,
+		0.03644660940672617,
+		0,
+		1,
+		0,
+		0,
+		-0.8152851165098011,
+		-0.025734806151272716,
+		0,
+		1,
+		0,
+		0,
+		-0.7288417161825451,
+		-0.07193976625564336,
+		0,
+		1,
+		0,
+		0,
+		-0.6350451610080643,
+		-0.10039264020161526,
+		0,
+		1,
+		0,
+		0,
+		-0.5375000000000001,
+		-0.1100000000000001,
+		0,
+		1,
+		0,
+		0,
+		-0.4399548389919358,
+		-0.10039264020161531,
+		0,
+		1,
+		0,
+		0,
+		-0.34615828381745495,
+		-0.07193976625564341,
+		0,
+		1,
+		0,
+		0,
+		-0.25971488349019906,
+		-0.025734806151272827,
+		0,
+		1,
+		0,
+		0,
+		-0.1839466094067263,
+		0.03644660940672606,
+		0,
+		1,
+		0,
+		0,
+		-0.12176519384872736,
+		0.11221488349019881,
+		0,
+		1,
+		0,
+		0,
+		-0.07556023374435672,
+		0.1986582838174547,
+		0,
+		1,
+		0,
+		0,
+		-0.04710735979838482,
+		0.29245483899193553,
+		0,
+		1,
+		0,
+		0,
+		-0.03749999999999998,
+		0.3899999999999998,
+		0,
+		1,
+		0,
+		0
+	];
+		
+	}
+	
+
+}
+
+class Pyramid5 {
+	constructor() {
+		this.buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		//Now we want to add color to our vertices information.
+		this.vertices =
+			[-.5,-.5,0,1,0.5,1,
+			 .5,-.5,0,1,0.5,1,
+			 0,.5,0,1,0.5,1,
+				
+			 -.5,-.5,0,1,0.5,1,
+			 0,0,-.5,1,0.5,1,
+			 .5,-.5,0,1,0.5,1,
+			 
+			 0,0,-.5,1,0.5,1,
+			 .5,-.5,0,1,0.5,1,
+			 0,.5,0,1,0.5,1,
+			 
+			 0,.5,0,1,0.5,1,
+			 0,0,-.5,1,0.5,1,
+			 -.5,-.5,0,1,0.5,1,
+
+			 .5,.5,0,1,0.5,1,
+			 -.5,.5,0,1,0.5,1,
+			 0,-.5,0,1,0.5,1,
+				
+			 .5,.5,0,1,0.5,1,
+			 0,0,-.5,1,0.5,1,
+			 -.5,.5,0,1,0.5,1,
+			 
+			 0,0,-.5,1,0.5,1,
+			 -.5,.5,0,1,0.5,1,
+			 0,-.5,0,1,0.5,1,
+			 
+			 0,-.5,0,1,0.5,1,
+			 0,0,-.5,1,0.5,1,
+			 .5,.5,0,1,0.5,1,
+
+			 
+			 ];
+		
+	}
+	
+
+}
+
+class Pyramid2 {
+	constructor() {
+		this.buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		//Now we want to add color to our vertices information.
+		this.vertices =
+			[-.5,-.5,0,1,1,0,
+			 .5,-.5,0,1,0,0,
+			 0,.5,0,1,0,0,
+				
+			 -.5,-.5,0,0,1,0,
+			 0,0,-.5,0,1,0,
+			 .5,-.5,0,0,1,0,
+			 
+			 0,0,-.5,0,0,1,
+			 .5,-.5,0,0,0,1,
+			 0,.5,0,0,0,1,
+			 
+			 0,.5,0,1,1,0,
+			 0,0,-.5,1,1,0,
+			 -.5,-.5,0,1,1,0,
+
+			 .5,.5,0,0,0,0,
+			 -.5,.5,0,1,0,0,
+			 0,-.5,0,1,0,0,
+				
+			 .5,.5,0,0,1,0,
+			 0,0,-.5,0,1,0,
+			 -.5,.5,0,0,1,0,
+			 
+			 0,0,-.5,0,0,1,
+			 -.5,.5,0,0,0,1,
+			 0,-.5,0,0,0,1,
+			 
+			 0,-.5,0,1,1,0,
+			 0,0,-.5,1,1,0,
+			 .5,.5,0,1,1,0
+
+			 
+			 ];
+		
+	}
+	
+	
+}
+
+class Pyramid1 {
+	constructor() {
+		this.buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		//Now we want to add color to our vertices information.
+		this.vertices =
+			[-.5,-.5,0,0,0,0,
+			 .5,-.5,0,1,0,0,
+			 0,.5,0,1,0,0,
+				
+			 -.5,-.5,0,0,1,0,
+			 0,0,-.5,0,1,0,
+			 .5,-.5,0,0,1,0,
+			 
+			 0,0,-.5,0,0,1,
+			 .5,-.5,0,0,0,1,
+			 0,.5,0,0,0,1,
+			 
+			 0,.5,0,1,1,0,
+			 0,0,-.5,1,1,0,
+			 -.5,-.5,0,1,1,0,
+
+			 .5,.5,0,0,0,0,
+			 -.5,.5,0,1,0,0,
+			 0,-.5,0,1,0,0,
+				
+			 .5,.5,0,0,1,0,
+			 0,0,-.5,0,1,0,
+			 -.5,.5,0,0,1,0,
+			 
+			 0,0,-.5,0,0,1,
+			 -.5,.5,0,0,0,1,
+			 0,-.5,0,0,0,1,
+			 
+			 0,-.5,0,1,1,0,
+			 0,0,-.5,1,1,0,
+			 .5,.5,0,1,1,0
+
+			 
+			 ];
+		
+	}
+}
+
+class Pyramid3 {
+	constructor() {
+		this.buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		//Now we want to add color to our vertices information.
+		this.vertices =
+			[-.5,-.5,0,0,0,0,
+			 .5,-.5,0,1,0,0,
+			 0,.5,0,1,0,0,
+				
+			 -.5,-.5,0,0,1,0,
+			 0,0,-.5,0,1,0,
+			 .5,-.5,0,0,1,0,
+			 
+			 0,0,-.5,0,0,1,
+			 .5,-.5,0,0,0,1,
+			 0,.5,0,0,0,1,
+			 
+			 0,.5,0,1,1,0,
+			 0,0,-.5,1,1,0,
+			 -.5,-.5,0,1,1,0,
+
+			 .5,.5,0,0,0,0,
+			 -.5,.5,0,1,0,0,
+			 0,-.5,0,1,0,0,
+				
+			 .5,.5,0,0,1,0,
+			 0,0,-.5,0,1,0,
+			 -.5,.5,0,0,1,0,
+			 
+			 0,0,-.5,0,0,1,
+			 -.5,.5,0,0,0,1,
+			 0,-.5,0,0,0,1,
+			 
+			 0,-.5,0,1,1,0,
+			 0,0,-.5,1,1,0,
+			 .5,.5,0,1,1,0
+
+			 
+			 ];
+		
+	}
+}
+
+class GameObject {
+	constructor() {
+		this.transform = new Transform();
+		this.collisionShape = null;
+		this.renderShape = null;
+
+		this.velocity = [0, 0, 0];
+		this.angVelocity = [0, 0, 0];
+
+		this.name = "Default";
+		this.id = 0;
+
+		this.className;
+	}
+
+	update(delta, time) {
+		this.transform.setLocation(VMath.add(this.transform.loc, VMath.multiply(this.velocity, delta)));
+		this.transform.setRotation(VMath.add(this.transform.rot, VMath.multiply(this.angVelocity, delta)));
+	}
+}
+
+class RenderShape {
+	constructor() {
+		this.buffer = gl.createBuffer();
+		this.color = [1, 1, 1, 1];
+		this.vertData = [];
+	}
+	fromOBJ(obj) {
+		
+		this.bufferVertData(obj)
+	}
+	bufferVertData(vertData) {
+		this.vertData = vertData;
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertData), gl.STATIC_DRAW);
+	}
+	render(program, loc, rot, scale) {
+		//Position
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+		var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+		var size = 3;
+		var type = gl.FLOAT;
+		var normalize = false;
+		var stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+		var offset = 0;        // start at the beginning of the buffer
+		gl.enableVertexAttribArray(positionAttributeLocation);
+		gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
+
+		//Color
+		var colorAttributeLocation = gl.getAttribLocation(program, "a_color");
+		size = 3;
+		type = gl.FLOAT;
+		normalize = false;
+		stride = 12 * Float32Array.BYTES_PER_ELEMENT;
+		offset = 3 * Float32Array.BYTES_PER_ELEMENT;
+		gl.enableVertexAttribArray(colorAttributeLocation);
+		gl.vertexAttribPointer(colorAttributeLocation, size, type, normalize, stride, offset);
+
+		//Texture
+		var textureAttributeLocation = gl.getAttribLocation(program, "a_texture");
+		size = 3;
+		type = gl.FLOAT;
+		normalize = false;
+		stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+		offset = 0 * Float32Array.BYTES_PER_ELEMENT;
+		gl.enableVertexAttribArray(textureAttributeLocation);
+		gl.vertexAttribPointer(textureAttributeLocation, size, type, normalize, stride, offset);
+
+		//Normal
+		var normalAttributeLocation = gl.getAttribLocation(program, "a_normal");
+		size = 3;
+		type = gl.FLOAT;
+		normalize = false;
+		stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+		offset = 0 * Float32Array.BYTES_PER_ELEMENT;
+		gl.enableVertexAttribArray(normalAttributeLocation);
+		gl.vertexAttribPointer(normalAttributeLocation, size, type, normalize, stride, offset);
+
+		var tranLoc = gl.getUniformLocation(program, 'u_translation');
+		gl.uniform3fv(tranLoc, new Float32Array(loc));
+		var thetaLoc = gl.getUniformLocation(program, 'u_rotation');
+		gl.uniform3fv(thetaLoc, new Float32Array(rot));
+		var scaleLoc = gl.getUniformLocation(program, 'u_scale');
+		gl.uniform3fv(scaleLoc, new Float32Array(scale));
+
+		var colorLoc = gl.getUniformLocation(program, 'u_color');
+		gl.uniform4fv(colorLoc, new Float32Array(this.color));
+
+		var primitiveType = gl.TRIANGLE_FAN;
+		offset = 0;
+		gl.drawArrays(primitiveType, offset, this.vertData.length / 6);
+	}
+}
+
+class CollisionShape {
+	getDistance(point, center) { }
+	getNormal(point, center) { }
+}
+
+class CollisionSphere {
+	constructor(radius) {
+		this.radius = radius;
+	}
+	getDistance(point, center) {
+		return this.radius;
+	}
+	getNormal(point, center) {
+		var dif = VMath.subtract(point, center);
+		return VMath.normalize(dif);
+	}
+}
+
+class CollisionCube {
+	constructor(width, height, depth) {
+		this.width = width;
+		this.height = height;
+		this.depth = depth;
+	}
+	getDistance(point, center) {
+		var test = [...point];
+
+		if (test[0] < center[0]-this.width/2)
+			test[0] = center[0]-this.width/2;
+		else if (test[0] > center[0]+this.width/2) 
+			test[0] = center[0]+this.width/2;
+
+		if (test[1] < center[1]-this.height/2)  
+			test[1] = center[1]-this.height/2;
+		else if (test[1] > center[1]+this.height/2)
+		 	test[1] = center[1]+this.height/2;
+
+		if (test[2] < center[2]-this.depth/2)
+			test[2] = center[2]-this.depth/2;
+		else if (test[2] > center[2]+this.depth/2) 
+			test[2] = center[2]+this.depth/2;
+
+		// get distance from closest edges
+		return VMath.distance(center,test);
+	}
+	getNormal(point, center) {
+		var test = [...point];
+
+		if (test[0] < center[0]-this.width/2)
+			return [-1,0,0]
+		else if (test[0] > center[0]+this.width/2) 
+			return [1,0,0]
+
+		if (test[1] < center[1]-this.height/2)  
+			return [0,-1,0]
+		else if (test[1] > center[1]+this.height/2)
+			return [0,1,0]
+
+		if (test[2] < center[2]-this.depth/2)
+			return [0,0,-1]
+		else if (test[2] > center[2]+this.depth/2) 
+			return [0,0,1]
+		
+		return [0,0,0];
+	}
+}
+
+class VMath {
+	static multiply(vector, scalar) {
+		return [vector[0] * scalar, vector[1] * scalar, vector[2] * scalar]
+	}
+	static divide(vector, scalar) {
+		return this.multiply(vector, 1.0 / scalar);
+	}
+	static add(vector1, vector2) {
+		return [vector1[0] + vector2[0], vector1[1] + vector2[1], vector1[2] + vector2[2]]
+	}
+	static subtract(vector1, vector2) {
+		return [vector1[0] - vector2[0], vector1[1] - vector2[1], vector1[2] - vector2[2]]
+	}
+	static magnitude(vector) {
+		return Math.sqrt(Math.pow(vector[0], 2) + Math.pow(vector[1], 2) + Math.pow(vector[2], 2));
+	}
+	static project(vector1,vector2)
+	{
+		return VMath.multiply(vector2,VMath.dot(vector1,vector2));
+	}
+	static normalize(vector) {
+		if (this.magnitude(vector) < 0.0000001) return vector;
+		return this.divide(vector, this.magnitude(vector));
+	}
+	static dot(vector1, vector2) {
+		return vector1[0] * vector2[0] + vector1[1] * vector2[1] + vector1[2] * vector2[2];
+	}
+	static distance(point1, point2) {
+		var difference = this.subtract(point1, point2);
+		return this.magnitude(difference);
+	}
+}
+
+class Camera extends GameObject {
+	constructor() {
+		super();
+		this.aspect = 1
+		this.fov = 70;
+		this.nearPlane = 0.25;
+		this.farPlane = 100;
+	}
+
+	moveCamera(program) {
+		var cameraTranLoc = gl.getUniformLocation(program, 'u_cameraTran');
+		gl.uniform3fv(cameraTranLoc, this.transform.loc);
+		var cameraRotLoc = gl.getUniformLocation(program, 'u_cameraRot');
+		gl.uniform3fv(cameraRotLoc, this.transform.rot);
+
+		var viewFOVLoc = gl.getUniformLocation(program, 'u_viewFOV');
+		gl.uniform1f(viewFOVLoc, this.fov);
+		var viewAspectLoc = gl.getUniformLocation(program, 'u_viewAspect');
+		gl.uniform1f(viewAspectLoc, this.aspect);
+
+		var viewNearLoc = gl.getUniformLocation(program, 'u_viewNear');
+		gl.uniform1f(viewNearLoc, this.nearPlane);
+		var viewFarLoc = gl.getUniformLocation(program, 'u_viewFar');
+		gl.uniform1f(viewFarLoc, this.farPlane);
+	}
+
+	update(delta, time) {
+
+	}
+}
+
+class Wall extends GameObject {
+	constructor() {
+		super();
+		this.collisionShape = new CollisionCube(1, 1, 1);
+		this.solid = true;
+
+		this.renderShape = new RenderShape();
+		this.shape = new Pyramid5();
+		this.renderShape.fromOBJ(this.shape.vertices);
+	}
+}
+
+class Folder extends GameObject {
+	constructor(){
+		super()
+		this.collisionShape = new CollisionSphere(0.25);
+
+		this.renderShape = new RenderShape();
+		
+		this.shape = new Pyramid1();
+		this.renderShape.fromOBJ(this.shape.vertices);
+	}
+
+	update(delta, time){
+		super.update(delta, time);
+
+		this.transform.setRotation([0,time*2,0])
+
+		mainInstance.Objects.forEach(gameObj => {
+			console.log(gameObj.className)
+
+			if(gameObj == this || gameObj.collisionShape == null) return;
+
+			var collisionDistance = mainInstance.checkCollision (this,gameObj)
+			
+			if(collisionDistance <= 0)
+			{
+				if(gameObj.className == MailBox) mainInstance.destroyObject(gameObj.id);
+				if(gameObj.className == Wall) mainInstance.destroyObject(this.id);
+			}
+		});
+	}
+}
+
+class Coin extends GameObject {
+	constructor(){
+		super()
+		this.collisionShape = new CollisionSphere(0.5);
+
+		this.renderShape = new RenderShape();
+		this.shape = new Pyramid();
+		this.renderShape.fromOBJ(this.shape.vertices);
+	}
+
+	update(delta, time) {
+		this.transform.setRotation([0,time,0])
+		
+		var collisionDistance = mainInstance.checkCollision(this,mainInstance.player)
+
+		if(collisionDistance <= 0)
+		{
+			mainInstance.points += 1;
+			mainInstance.destroyObject(this.id);
+		}
+	}
+}
+
+class MailBox extends GameObject {
+	constructor(){
+		super()
+		this.collisionShape = new CollisionSphere(0.5);
+
+		this.renderShape = new RenderShape();
+		this.shape = new Pyramid3();
+		this.renderShape.fromOBJ(this.shape.vertices);
+	}
+
+	update(delta, time) {
+		super.update(delta, time);
+
+		var collisionDistance = mainInstance.checkCollision(this,mainInstance.player)
+
+		if(collisionDistance <= 0)
+		{
+			mainInstance.destroyObject(mainInstance.player.id);
+		}
+
+		var collision = false;
+
+		mainInstance.Objects.forEach(gameObj => {
+			if(gameObj == this || gameObj.collisionShape == null || !gameObj.solid) return;
+			var collisionDistance = mainInstance.checkCollision(this,gameObj)
+			
+			if(collisionDistance <= 0)
+			{
+				var normal = gameObj.collisionShape.getNormal(this.transform.loc,gameObj.transform.loc);
+
+				this.transform.setLocation(VMath.subtract(this.transform.loc,VMath.multiply(normal,collisionDistance)))
+
+				this.velocity = VMath.subtract(this.velocity,VMath.multiply(VMath.project(this.velocity,normal),2))
+			}
+		});
+	}
+}
+
+class UFO extends GameObject {
+	constructor() {
+		super();
+		this.collisionShape = new CollisionSphere(0.5);
+
+		this.renderShape = new RenderShape();
+		this.shape = new Pyramid2();
+		this.renderShape.fromOBJ(this.shape.vertices);
+		this.fire = false;
+	}
+
+	update(delta, time) {
+		super.update(delta, time);
+		var move = 0;
+		var rotate = 0;
+		if (mainInstance.isKeyPressed('A')) {
+			rotate += -1;
+		}
+		if (mainInstance.isKeyPressed('D')) {
+			rotate += 1;
+		}
+		if (mainInstance.isKeyPressed('W')) {
+			move += 1;
+		}
+		if (mainInstance.isKeyPressed('S')) {
+			move += -1;
+		}
+
+		this.velocity = VMath.add(this.velocity, VMath.multiply(this.transform.forward, delta * 32 * move));
+		this.angVelocity = VMath.add(this.angVelocity, VMath.multiply([0, 1, 0], delta * 45 * rotate));
+
+
+		this.velocity = VMath.add(this.velocity, VMath.multiply(this.velocity, -delta * 8))
+		this.angVelocity = VMath.add(this.angVelocity, VMath.multiply(this.angVelocity, -delta * 8))
+
+		mainInstance.Objects.forEach(gameObj => {
+			if(gameObj == this || gameObj.collisionShape == null || !gameObj.solid) return;
+			var collisionDistance = mainInstance.checkCollision(this,gameObj)
+			
+			if(collisionDistance <= 0)
+			{
+				var normal = gameObj.collisionShape.getNormal(this.transform.loc,gameObj.transform.loc);
+				this.transform.setLocation(VMath.subtract(this.transform.loc,VMath.multiply(normal,collisionDistance)))
+
+				this.velocity = VMath.subtract(this.velocity,VMath.project(this.velocity,normal))
+			}
+		});
+
+		if(mainInstance.isKeyPressed(" ")){
+			console.log("fire");
+			if(!this.fire)
+			{
+				var bullet = mainInstance.createObject(Folder,this.transform.loc);
+				bullet.transform.setRotation(this.transform.rot);
+				bullet.transform.scale = [0.5,0.5,0.5];
+	
+				bullet.velocity = VMath.multiply(this.transform.forward, 16);
+	
+				this.fire = true
+			}
+		}
+		else
+		{
+			this.fire = false;
+		}
+	}
+}
+    </script>
+
+	<script>
+
+		class InitWebGLProgram {
+			constructor() {
+				gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+				gl.clearColor(1, 1, 1, 1);
+				gl.clear(gl.COLOR_BUFFER_BIT);
+				gl.enable(gl.DEPTH_TEST);
+				gl.disable(gl.CULL_FACE);
+			}
+			createShader(type, source) {
+				var shader = gl.createShader(type);
+				gl.shaderSource(shader, source);
+				gl.compileShader(shader);
+
+				var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+				if (success) {
+					return shader;
+				}
+
+				console.error(gl.getShaderInfoLog(shader));
+				gl.deleteShader(shader);
+			}
+
+			createProgram(vs, fs) {
+				var program = gl.createProgram();
+				gl.attachShader(program, vs);
+				gl.attachShader(program, fs);
+				gl.linkProgram(program);
+				var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+				if (success) {
+					return program;
+				}
+
+				console.error(gl.getProgramInfoLog(program));
+				gl.deleteProgram(program);
+			}
+		}
+
+		class Main {
+			constructor() {
+				this.webGL = new InitWebGLProgram();
+				var vertexShaderSource = document.getElementById("2dVertexShader").text;
+				var fragmentShaderSource = document.getElementById("2dFragmentShader").text;
+				var vertexShader = this.webGL.createShader(gl.VERTEX_SHADER, vertexShaderSource);
+				var fragmentShader = this.webGL.createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+				this.program = this.webGL.createProgram(vertexShader, fragmentShader);
+				gl.useProgram(this.program);
+
+				this.lastTime = 0;
+
+				this.ObjectCounter = 0;
+
+				this.Objects = [];
+
+				this.player = this.createObject(UFO,[-4,0,0]);
+
+				this.createObject(Wall,[0,0,-5]).collisionShape.width = 4;
+				this.createObject(Wall,[4,0,-5]).collisionShape.width = 4;
+				this.createObject(Wall,[-4,0,-5]).collisionShape.width = 4;
+
+				this.createObject(Wall,[0,0,5]).collisionShape.width = 4;
+				this.createObject(Wall,[4,0,5]).collisionShape.width = 4;
+				this.createObject(Wall,[-4,0,5]).collisionShape.width = 4;
+
+				this.createObject(Coin,[1,0,2]);
+				this.createObject(Coin,[4,0,1]);
+				this.createObject(Coin,[-3,0,2]);
+
+				var mailBox = this.createObject(MailBox,[0,0,2]);
+				mailBox.velocity = [0,0,-2];
+				mailBox.angVelocity = [0,4,0];
+
+				mailBox = this.createObject(MailBox,[3,0,-2]);
+				mailBox.velocity = [0,0,2];
+				mailBox.angVelocity = [0,-4,0];
+
+				this.points = 0;
+
+				this.mainCamera = this.createObject(Camera,[0,8,3],[75 * Math.PI/180,Math.PI,0])
+				this.mainCamera.fov = 70;
+
+				this.Keys = [];
+			}
+
+			updateAll(delta) {
+				this.Objects.forEach(gameObj => {
+					gameObj.update(delta, mainInstance.lastTime);
+				});
+			}
+
+			renderAll() {
+				this.mainCamera.aspect = canvas.width/canvas.height
+				this.mainCamera.moveCamera(this.program);
+				this.Objects.forEach(gameObj => {
+					if(gameObj.renderShape != null)
+					{
+						gameObj.renderShape.render(this.program,gameObj.transform.loc,gameObj.transform.rot,gameObj.transform.scale);
+					}
+				});
+
+				ctx2d.clearRect(0,0,canvas.width,canvas.height)
+
+				ctx2d.fillStyle = "black"
+				ctx2d.font = "48px serif";
+  				ctx2d.fillText("Coins: "+this.points, 10, 50);
+
+				if(!this.Objects.includes(this.player))
+				{
+					ctx2d.fillText("DEAD", canvas.width/2 - 80, canvas.height/2);
+				}
+			}
+
+			checkCollision(gameObject1, gameObject2) {
+				var shape1 = gameObject1.collisionShape;
+				var shape2 = gameObject2.collisionShape;
+
+				var loc1 = gameObject1.transform.loc;
+				var loc2 = gameObject2.transform.loc;
+
+				if(shape1 == null || shape2 == null){
+					return Number.MAX_VALUE;
+				}
+
+				var overlap = VMath.distance(loc1,loc2) - (shape1.getDistance(loc2,loc1) + shape2.getDistance(loc1,loc2));
+				return overlap;
+			}
+
+			createObject(className,loc=[0,0,0],rot=[0,0,0],scale=[0,0,0]) {
+				var temp = new className
+
+				var id = this.ObjectCounter;
+				this.ObjectCounter++;
+
+				temp.id = id;
+				temp.className = className;
+				temp.transform.setLocation(loc);
+				temp.transform.setRotation(rot);
+		
+				this.Objects[id] = temp;
+				return temp;
+			}
+
+			destroyObject(id) {
+				if (id in this.Objects) {
+					delete this.Objects[id];
+					return true;
+				}
+				return false;
+			}
+
+			isKeyPressed(key) {
+				var code = key.charCodeAt(0);
+				if (code in this.Keys) {
+					return this.Keys[code];
+				}
+				return false;
+			}
+
+			keyDown(event) {
+				console.log("The number of the key pressed:  " + event.keyCode +
+					",the string of the event code: " + String.fromCharCode(event.keyCode));
+
+				this.Keys[event.keyCode] = true;
+			}
+
+			keyUp(event) {
+				console.log("The number of the key released:  " + event.keyCode +
+					",the string of the event code: " + String.fromCharCode(event.keyCode));
+
+				this.Keys[event.keyCode] = false;
+			}
+
+			mouseClick(event) {
+				var coord = Main.webGLPosition(event.clientX, event.clientY);
+				console.log("The click occurred on " + coord.x + "," + coord.y);
+			}
+
+			//Static call backs
+
+			static keyD(event) {
+				mainInstance.keyDown(event);
+			}
+
+			static keyU(event) {
+				mainInstance.keyUp(event);
+			}
+
+			static mouseC(event) {
+				mainInstance.mouseClick(event);
+			}
+
+			static mainLoop(timestamp) {
+				timestamp /= 1000;
+				var delta = timestamp - mainInstance.lastTime
+
+				mainInstance.lastTime = timestamp;
+
+				mainInstance.updateAll(delta);
+				mainInstance.renderAll();
+
+				requestAnimationFrame(Main.mainLoop);
+			}
+
+			static webGLPosition(clientX, clientY) {
+				// convert coordinates from pixel to webGL
+				var rect = canvas.getBoundingClientRect(); // get the rect of the canvas
+				var realX = clientX - rect.left; // the X pos on the page, offset by the canvas bounds
+				var realY = clientY - rect.top // the Y pos on the page, offset by the canvas bounds
+				var x = -1 + 2 * realX / canvas.width; // the webGL-adjusted X, between -1 and 1
+				var y = -1 + 2 * (canvas.height - realY) / canvas.height; // the webGL-adjusted Y, between -1 and 1, with the y-axis inverted
+
+				return { x, y }
+			}
+		}
+
+	</script>
+
+</Head>
+
+<style>
+	* {
+		margin: 0;
+		padding: 0;
+		box-sizing: content-box;
+	}
+
+	.fullscreen {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+	canvas {
+		position: absolute;
+	}
+</style>
+
+<BODY style="padding: 15px; background: green; background-size: 15%;">
+	<HEADER>
+
+	</HEADER>
+
+	<div class="fullscreen">
+		<CANVAS id="myCanvas" width="800" height="800" style="background-color: white;">
+			Your browser does not support canvas.
+		</CANVAS>
+		<CANVAS id="textCanvas" width="900" height="800">
+			Your browser does not support canvas.
+		</CANVAS>
+	</div>
+
+	<SCRIPT>
+		var canvas = document.getElementById("myCanvas");
+		var gl = canvas.getContext("webgl");
+		var ctx2d = document.getElementById("textCanvas").getContext("2d");
+		var mainInstance = new Main();
+
+		window.onkeydown = Main.keyD;
+		window.onkeyup = Main.keyU;
+
+		canvas.addEventListener("click", Main.mouseC);
+
+		requestAnimationFrame(Main.mainLoop);
+
+	</SCRIPT>
+
+	<FOOTER>
+
+	</FOOTER>
+
+
+</BODY>
+
+</HTML>
